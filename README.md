@@ -1,16 +1,24 @@
-# tesla_app
+# Tesla Model 3
 
-A new Flutter project.
+Flutter recreation of [uixNinja’s Tesla mobile app concept](https://dribbble.com/shots/6908388-Tesla-mobile-app-ui-tutorial).
 
-## Getting Started
+## Run
 
-This project is a starting point for a Flutter application.
+```sh
+flutter pub get
+flutter run
+```
 
-A few resources to get you started if this is your first Flutter project:
+Browser preview: `flutter run -d chrome`.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Tap the car or infinity-shaped bottom control to open Wheels. The car transitions into the extracted pressure outline. Use the back arrow or Info to return. Power and lock controls toggle local demo state; metric cards open details.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Both screens use sample readings from the concept. No Tesla API or real vehicle control is connected. The car assets are extracted from the compressed reference video; typography and icons are recreated. See `assets/README.md` for provenance.
+
+## Verify
+
+```sh
+flutter analyze
+flutter test
+flutter build web --no-web-resources-cdn
+```

@@ -1,30 +1,43 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:tesla_app/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
-  });
+  testWidgets(
+    'Dashboard controls and pressure navigation work at phone sizes',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
+      expect(find.text('Model3'), findsOneWidget);
+      expect(find.text('Charge'), findsOneWidget);
+      expect(find.text('86 mph', findRichText: true), findsOneWidget);
+      await tester.tap(find.byTooltip('Toggle vehicle power'));
+      await tester.pumpAndSettle();
+      expect(find.text('0 mph', findRichText: true), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Unlock vehicle'));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Lock vehicle'), findsOneWidget);
+      await tester.tap(find.byTooltip('Wheel controls'));
+      await tester.pumpAndSettle();
+      expect(find.text('Wheels'), findsOneWidget);
+      expect(find.text('25 atm'), findsOneWidget);
+      expect(find.text('23 atm'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('Back to dashboard'));
+      await tester.pumpAndSettle();
+      expect(find.text('Model3'), findsOneWidget);
+      await tester.tap(find.text('Charge'));
+      await tester.pumpAndSettle();
+      expect(find.text('Battery charge'), findsOneWidget);
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      tester.view.physicalSize = const Size(320, 568);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
