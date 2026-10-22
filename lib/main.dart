@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'experience.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,7 +26,7 @@ class MyApp extends StatelessWidget {
       colorScheme: const ColorScheme.dark(primary: cyan, surface: charcoal),
       useMaterial3: true,
     ),
-    home: const TeslaDashboard(),
+    home: const TeslaExperience(dashboard: TeslaDashboard()),
   );
 }
 
@@ -422,67 +423,20 @@ class _TeslaDashboardState extends State<TeslaDashboard>
                                 ),
                               ),
                             Positioned(
-                              left: 47,
-                              right: 39,
+                              left: 80,
+                              right: 80,
                               bottom: 23,
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Semantics(
-                                    button: true,
-                                    label: 'Vehicle information',
-                                    child: GestureDetector(
-                                      onTap: () => showWheels(false),
-                                      child: Container(
-                                        width: 127,
-                                        height: 44,
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF00AFEA),
-                                          borderRadius: BorderRadius.circular(
-                                            30,
-                                          ),
-                                        ),
-                                        child: const Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              'Info',
-                                              style: TextStyle(fontSize: 17),
-                                            ),
-                                            SizedBox(width: 19),
-                                            Icon(Icons.home_outlined, size: 23),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  _IconButton(
-                                    label: 'Wheel controls',
-                                    icon: Icons.all_inclusive,
-                                    foreground: wheels ? cyan : muted,
-                                    onTap: () => showWheels(true),
-                                  ),
-                                  _IconButton(
-                                    label: 'Charging',
-                                    icon: Icons.bolt_outlined,
-                                    onTap: () => details(
-                                      'Charging',
-                                      '19% battery remaining\nCharging cable disconnected',
-                                      Icons.bolt_outlined,
-                                    ),
-                                  ),
-                                  _IconButton(
-                                    label: 'Vehicle guide',
-                                    icon: Icons.map_outlined,
-                                    onTap: () => details(
-                                      'Your Model 3',
-                                      'Tap the car or wheel controls to see pressure.\nUse the lock to lock or unlock the demo vehicle.\nTap any card for more information.',
-                                      Icons.menu_book_outlined,
-                                    ),
-                                  ),
-                                ],
+                              child: TextButton.icon(
+                                onPressed: () => showWheels(!wheels),
+                                icon: Icon(
+                                  wheels ? Icons.arrow_back : Icons.tire_repair,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  wheels
+                                      ? 'Vehicle overview'
+                                      : 'Wheel pressure',
+                                ),
                               ),
                             ),
                           ],

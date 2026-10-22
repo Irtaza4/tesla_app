@@ -13,7 +13,7 @@ void main() {
       await tester.pumpWidget(const MyApp());
       await tester.pumpAndSettle();
       expect(find.text('Model3'), findsOneWidget);
-      expect(find.text('Charge'), findsOneWidget);
+      expect(find.text('Charge'), findsNWidgets(2));
       expect(find.text('86 mph', findRichText: true), findsOneWidget);
       await tester.tap(find.byTooltip('Toggle vehicle power'));
       await tester.pumpAndSettle();
@@ -21,7 +21,7 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Unlock vehicle'));
       await tester.pumpAndSettle();
       expect(find.bySemanticsLabel('Lock vehicle'), findsOneWidget);
-      await tester.tap(find.byTooltip('Wheel controls'));
+      await tester.tap(find.text('Wheel pressure'));
       await tester.pumpAndSettle();
       expect(find.text('Wheels'), findsOneWidget);
       expect(find.text('25 atm'), findsOneWidget);
@@ -30,7 +30,7 @@ void main() {
       await tester.tap(find.byTooltip('Back to dashboard'));
       await tester.pumpAndSettle();
       expect(find.text('Model3'), findsOneWidget);
-      await tester.tap(find.text('Charge'));
+      await tester.tap(find.text('Charge').first);
       await tester.pumpAndSettle();
       expect(find.text('Battery charge'), findsOneWidget);
       await tester.tap(find.text('Done'));

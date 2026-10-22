@@ -22,3 +22,15 @@ flutter analyze
 flutter test
 flutter build web --no-web-resources-cdn
 ```
+
+## Interactive screens
+
+The bottom navigation now opens five persistent screens:
+
+- **Info:** original Model 3 dashboard and animated pressure diagram.
+- **Drive:** start/park the simulation, change cruise speed, steer between three lanes, select Chill/Sport, and reset the trip. Animation and trip accumulation pause when the tab is hidden.
+- **Controls:** cabin temperature, fan speed, climate power, locks, window venting, trunk, seat heat, and defrost.
+- **Charge:** start/stop a simulated charging session and set a 50–100% limit. Battery advances one percentage point every two seconds and stops at the limit.
+- **Explore:** illustrated demo map, three destination presets, route selection, and a transition into the driving screen.
+
+Settings persist while switching tabs during the current app session. Map routes, driving, and charging are simulations; no mapping service or vehicle API is connected.
