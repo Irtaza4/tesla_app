@@ -34,3 +34,5 @@ The bottom navigation now opens five persistent screens:
 - **Explore:** illustrated demo map, three destination presets, route selection, and a transition into the driving screen.
 
 Settings persist while switching tabs during the current app session. Map routes, driving, and charging are simulations; no mapping service or vehicle API is connected.
+
+Driving motion uses a frame-timed simulation: Chill and Sport accelerate at different rates, road speed follows actual speed, braking illuminates rear lights, and lane changes ease into position with a small steering lean. Five staggered traffic vehicles add depth ahead of the car. Driving buttons compress on press and trigger selection/light-impact haptics on supported devices. Simulation pauses while the Drive tab is hidden.

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
 const _bg = Color(0xFF1F1F1F);
 const _panel = Color(0xFF292929);
@@ -242,26 +244,70 @@ class DrivePage extends StatefulWidget {
 
 class _DrivePageState extends State<DrivePage>
     with SingleTickerProviderStateMixin {
-  late final AnimationController road = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1600),
-  );
+  late final Ticker ticker = createTicker(_frame);
   Timer? timer;
+  Duration? previous;
   bool driving = false;
-  double speed = 48;
-  double distance = 0;
-  int seconds = 0;
-  int lane = 1;
+  double speed = 48,
+      actualSpeed = 0,
+      distance = 0,
+      roadPhase = 0,
+      trafficPhase = 0;
+  double lanePosition = 1, bank = 0;
+  int seconds = 0, lane = 1;
   String mode = 'Chill';
+  bool get moving => driving || actualSpeed > .1;
   @override
   void initState() {
     super.initState();
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (driving && widget.active) {
-        setState(() {
-          seconds++;
-          distance += speed / 3600;
-        });
+        setState(() => seconds++);
+      }
+    });
+  }
+
+  void _wake() {
+    if (widget.active && !ticker.isActive) {
+      previous = null;
+      ticker.start();
+    }
+  }
+
+  void _frame(Duration elapsed) {
+    final dt = previous == null
+        ? 0.0
+        : ((elapsed - previous!).inMicroseconds / 1000000).clamp(0.0, .05);
+    previous = elapsed;
+    if (dt == 0) {
+      return;
+    }
+    setState(() {
+      final target = driving ? speed : 0.0;
+      final acceleration = target > actualSpeed
+          ? (mode == 'Sport' ? 15.0 : 9.0)
+          : 18.0;
+      actualSpeed += (target - actualSpeed).clamp(
+        -acceleration * dt,
+        acceleration * dt,
+      );
+      if ((target - actualSpeed).abs() < .03) {
+        actualSpeed = target;
+      }
+      distance += actualSpeed * dt / 3600;
+      roadPhase = (roadPhase + actualSpeed * dt / 30) % 1;
+      trafficPhase = (trafficPhase + actualSpeed * dt / 1300) % 1;
+      final before = lanePosition;
+      lanePosition += (lane - lanePosition) * (1 - math.exp(-5.5 * dt));
+      final desiredBank = ((lanePosition - before) / dt * .09).clamp(-.15, .15);
+      bank += (desiredBank - bank) * (1 - math.exp(-8 * dt));
+      if ((lanePosition - lane).abs() < .001) {
+        lanePosition = lane.toDouble();
+      }
+      if (!moving && lanePosition == lane && bank.abs() < .001) {
+        bank = 0;
+        ticker.stop();
+        previous = null;
       }
     });
   }
@@ -269,26 +315,34 @@ class _DrivePageState extends State<DrivePage>
   @override
   void didUpdateWidget(DrivePage old) {
     super.didUpdateWidget(old);
-    if (widget.active && driving) {
-      road.repeat();
-    } else {
-      road.stop();
+    if (!widget.active) {
+      ticker.stop();
+      previous = null;
+    } else if (moving || lanePosition != lane) {
+      _wake();
     }
   }
 
-  void toggleDrive() {
-    setState(() => driving = !driving);
-    if (driving) {
-      road.repeat();
-    } else {
-      road.stop();
+  void steer(int direction) {
+    final next = (lane + direction).clamp(0, 2);
+    if (next == lane) {
+      return;
     }
+    HapticFeedback.selectionClick();
+    setState(() => lane = next);
+    _wake();
+  }
+
+  void toggleDrive() {
+    HapticFeedback.lightImpact();
+    setState(() => driving = !driving);
+    _wake();
   }
 
   @override
   void dispose() {
     timer?.cancel();
-    road.dispose();
+    ticker.dispose();
     super.dispose();
   }
 
@@ -298,16 +352,25 @@ class _DrivePageState extends State<DrivePage>
       _Heading(
         'Let’s drive.',
         'Model 3 · driving simulator',
-        trailing: _Pill(driving ? 'DRIVING' : 'PARKED'),
+        trailing: _Pill(
+          driving
+              ? 'DRIVING'
+              : moving
+              ? 'BRAKING'
+              : 'PARKED',
+        ),
       ),
       Expanded(
         child: Stack(
           children: [
             Positioned.fill(
-              child: AnimatedBuilder(
-                animation: road,
-                builder: (context, _) =>
-                    CustomPaint(painter: _RoadPainter(road.value)),
+              child: RepaintBoundary(
+                child: CustomPaint(painter: _RoadPainter(roadPhase)),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: _Traffic(phase: trafficPhase, playerLane: lanePosition),
               ),
             ),
             Positioned(
@@ -317,7 +380,8 @@ class _DrivePageState extends State<DrivePage>
               child: Column(
                 children: [
                   Text(
-                    driving ? speed.round().toString() : '0',
+                    actualSpeed.round().toString(),
+                    key: const ValueKey('actual-speed'),
                     style: const TextStyle(
                       fontSize: 72,
                       height: 1,
@@ -336,53 +400,92 @@ class _DrivePageState extends State<DrivePage>
                 ],
               ),
             ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 550),
-              curve: Curves.easeInOutCubic,
-              left: 95 + lane * 55,
-              bottom: 34,
-              width: 90,
-              height: 195,
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: 15,
-                    right: 15,
-                    bottom: 9,
-                    height: 120,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(35),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _cyan.withValues(alpha: driving ? .15 : 0),
-                            blurRadius: 35,
-                            spreadRadius: 9,
-                          ),
-                        ],
+            Positioned(
+              key: const ValueKey('ego-car'),
+              left: 115 + lanePosition * 45,
+              bottom: 31,
+              width: 70,
+              height: 152,
+              child: Transform.rotate(
+                angle: bank,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      top: 20,
+                      bottom: 8,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(30),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _cyan.withValues(alpha: actualSpeed / 500),
+                              blurRadius: 28,
+                              spreadRadius: 6,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  Image.asset('assets/images/model_3.png', fit: BoxFit.contain),
-                ],
+                    Image.asset(
+                      'assets/images/model_3.png',
+                      fit: BoxFit.contain,
+                    ),
+                    Positioned(
+                      left: 10,
+                      right: 10,
+                      bottom: 7,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 250),
+                        opacity:
+                            !driving && actualSpeed > .1 ||
+                                driving && actualSpeed > speed + 1
+                            ? 1
+                            : .2,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            for (int i = 0; i < 2; i++)
+                              Container(
+                                width: 13,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFF5578),
+                                  borderRadius: BorderRadius.circular(3),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0xAAFF5578),
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             Positioned(
               bottom: 5,
               left: 25,
-              child: IconButton(
-                tooltip: 'Steer left',
-                onPressed: lane > 0 ? () => setState(() => lane--) : null,
-                icon: const Icon(Icons.west, size: 21),
+              child: _DriveTap(
+                label: 'Steer left',
+                icon: Icons.west,
+                onTap: lane > 0 ? () => steer(-1) : null,
               ),
             ),
             Positioned(
               bottom: 5,
               right: 25,
-              child: IconButton(
-                tooltip: 'Steer right',
-                onPressed: lane < 2 ? () => setState(() => lane++) : null,
-                icon: const Icon(Icons.east, size: 21),
+              child: _DriveTap(
+                label: 'Steer right',
+                icon: Icons.east,
+                onTap: lane < 2 ? () => steer(1) : null,
               ),
             ),
             const Positioned(
@@ -412,7 +515,7 @@ class _DrivePageState extends State<DrivePage>
             Row(
               children: [
                 const Text(
-                  'Cruise speed',
+                  'Set speed',
                   style: TextStyle(color: _secondary, fontSize: 12),
                 ),
                 Expanded(
@@ -424,13 +527,12 @@ class _DrivePageState extends State<DrivePage>
                     max: 60,
                     divisions: 50,
                     activeColor: _cyan,
+                    onChangeStart: (_) => HapticFeedback.selectionClick(),
+                    onChangeEnd: (_) => HapticFeedback.lightImpact(),
                     onChanged: (value) => setState(() {
                       speed = value;
-                      road.duration = Duration(
-                        milliseconds: (2400 - value * 22).round(),
-                      );
                       if (driving) {
-                        road.repeat();
+                        _wake();
                       }
                     }),
                   ),
@@ -447,11 +549,13 @@ class _DrivePageState extends State<DrivePage>
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Center(child: Text(name)),
+                      child: _DriveTap(
+                        label: name,
                         selected: mode == name,
-                        selectedColor: _purple.withValues(alpha: .25),
-                        onSelected: (_) => setState(() => mode = name),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setState(() => mode = name);
+                        },
                       ),
                     ),
                   ),
@@ -466,10 +570,12 @@ class _DrivePageState extends State<DrivePage>
               ],
             ),
             const SizedBox(height: 12),
-            _Action(
-              driving ? 'Park vehicle' : 'Start drive',
-              driving ? Icons.local_parking : Icons.play_arrow_rounded,
-              toggleDrive,
+            _DriveTap(
+              label: driving ? 'Park vehicle' : 'Start drive',
+              icon: driving ? Icons.local_parking : Icons.play_arrow_rounded,
+              onTap: toggleDrive,
+              selected: true,
+              primary: true,
             ),
           ],
         ),
@@ -1271,4 +1377,157 @@ class _MapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_MapPainter old) => old.destination != destination;
+}
+
+/// Small physical-looking controls echo the original rounded charcoal tiles.
+class _DriveTap extends StatefulWidget {
+  const _DriveTap({
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.selected = false,
+    this.primary = false,
+  });
+  final String label;
+  final VoidCallback? onTap;
+  final IconData? icon;
+  final bool selected, primary;
+  @override
+  State<_DriveTap> createState() => _DriveTapState();
+}
+
+class _DriveTapState extends State<_DriveTap> {
+  bool pressed = false;
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: widget.label,
+    child: AnimatedScale(
+      scale: pressed ? .94 : 1,
+      duration: Duration(milliseconds: pressed ? 75 : 220),
+      curve: Curves.easeOutCubic,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        height: widget.primary ? 50 : 44,
+        width: widget.primary
+            ? double.infinity
+            : widget.icon != null
+            ? 48
+            : null,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(widget.primary ? 18 : 15),
+          color: widget.primary
+              ? _cyan
+              : widget.selected
+              ? const Color(0xFF39304E)
+              : _panel,
+          border: Border.all(
+            color: widget.selected && !widget.primary
+                ? _purple.withValues(alpha: .25)
+                : Colors.white.withValues(alpha: .025),
+          ),
+          boxShadow: pressed
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: .12),
+                    offset: const Offset(0, 4),
+                    blurRadius: 12,
+                  ),
+                ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(widget.primary ? 18 : 15),
+            onHighlightChanged: (value) => setState(() => pressed = value),
+            onTap: widget.onTap,
+            splashColor: Colors.white.withValues(alpha: .06),
+            child: Opacity(
+              opacity: widget.onTap == null ? .3 : 1,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (widget.icon != null)
+                    Icon(
+                      widget.icon,
+                      size: 19,
+                      color: widget.primary
+                          ? Colors.white
+                          : widget.selected
+                          ? _purple
+                          : _secondary,
+                    ),
+                  if (widget.icon == null || widget.primary) ...[
+                    if (widget.icon != null) const SizedBox(width: 9),
+                    Text(
+                      widget.label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: widget.selected ? Colors.white : _secondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _Traffic extends StatelessWidget {
+  const _Traffic({required this.phase, required this.playerLane});
+  final double phase, playerLane;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final height = constraints.maxHeight;
+      return ClipRect(
+        child: Stack(
+          children: [
+            // All traffic remains ahead of the ego car. Staggered progress and depth
+            // give independent motion without sudden lane-overlap or collision.
+            for (int i = 0; i < 5; i++) _car(i, height),
+          ],
+        ),
+      );
+    },
+  );
+  Widget _car(int index, double height) {
+    final lane = [0, 2, 1, 0, 2][index];
+    final progress =
+        (phase * [1.0, .8, .65, 1.0, .8][index] +
+            [0.0, .25, .45, .60, .85][index]) %
+        1;
+    final depth = .12 + progress * .60;
+    final width = 14 + depth * 23;
+    final y = 116 + depth * depth * math.max(0, height - 285);
+    final x = 195 + (lane - 1) * (24 + depth * 69);
+    final opacity =
+        (math.min(progress / .12, (1 - progress) / .20)).clamp(0.0, 1.0) * .9;
+    return Positioned(
+      key: ValueKey('traffic-$index'),
+      left: x - width / 2,
+      top: y,
+      width: width,
+      height: width * 2.15,
+      child: Opacity(
+        opacity: opacity,
+        child: ColorFiltered(
+          colorFilter: ColorFilter.mode(
+            [
+              const Color(0xFF9CA7B4),
+              const Color(0xFF886775),
+              const Color(0xFF9B9C96),
+            ][index % 3].withValues(alpha: .2),
+            BlendMode.srcATop,
+          ),
+          child: Image.asset('assets/images/model_3.png', fit: BoxFit.contain),
+        ),
+      ),
+    );
+  }
 }
